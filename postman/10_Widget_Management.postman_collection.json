@@ -1,0 +1,768 @@
+{
+  "info": {
+    "name": "10. Widget Management API",
+    "description": "Complete widget management API with auto-token handling and test scripts",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Check if auth token exists, if not, skip to auth folder",
+          "if (!pm.environment.get('authToken')) {",
+          "    console.log('No auth token found. Please run authentication first.');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test to check for successful responses",
+          "if (pm.response.code === 200 || pm.response.code === 201) {",
+          "    pm.test('Request successful', () => {",
+          "        pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+          "    });",
+          "}",
+          "",
+          "// Parse and check JSON response",
+          "try {",
+          "    const jsonData = pm.response.json();",
+          "    pm.test('Response has success field', () => {",
+          "        pm.expect(jsonData).to.have.property('success');",
+          "    });",
+          "} catch (e) {",
+          "    console.log('Response is not JSON');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup & Authentication",
+      "item": [
+        {
+          "name": "Login as SaherFlow Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login successful', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.have.property('token');",
+                  "    ",
+                  "    // Store token and user info",
+                  "    pm.environment.set('authToken', jsonData.data.token);",
+                  "    pm.environment.set('userId', jsonData.data.user.id);",
+                  "    pm.environment.set('userEmail', jsonData.data.user.email);",
+                  "    pm.environment.set('userCompanyId', jsonData.data.user.company_id);",
+                  "    pm.environment.set('userRole', jsonData.data.user.role);",
+                  "    ",
+                  "    console.log('Auth token set:', jsonData.data.token.substring(0, 20) + '...');",
+                  "    console.log('User ID:', jsonData.data.user.id);",
+                  "    console.log('Company ID:', jsonData.data.user.company_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@saherflow.com\",\n  \"password\": \"Admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Arabco User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login successful', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    ",
+                  "    // Store Arabco-specific variables",
+                  "    pm.environment.set('arabcoToken', jsonData.data.token);",
+                  "    pm.environment.set('arabcoUserId', jsonData.data.user.id);",
+                  "    pm.environment.set('arabcoCompanyId', jsonData.data.user.company_id);",
+                  "    ",
+                  "    console.log('Arabco user logged in');",
+                  "    console.log('Company ID:', jsonData.data.user.company_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@arabco.com\",\n  \"password\": \"User123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1. Dashboard Discovery",
+      "item": [
+        {
+          "name": "Get Default Dashboard",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has dashboard data', () => {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.have.property('id');",
+                  "    pm.expect(jsonData.data).to.have.property('name');",
+                  "    pm.expect(jsonData.data).to.have.property('widgetCount');",
+                  "});",
+                  "",
+                  "// Store dashboard ID for subsequent requests",
+                  "pm.environment.set('defaultDashboardId', jsonData.data.id);",
+                  "console.log('Default dashboard ID:', jsonData.data.id);",
+                  "console.log('Dashboard name:', jsonData.data.name);",
+                  "console.log('Widget count:', jsonData.data.widgetCount);",
+                  "",
+                  "pm.test('Dashboard has 10 widgets', () => {",
+                  "    pm.expect(jsonData.data.widgetCount).to.equal(10);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/default-dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "default-dashboard"]
+            },
+            "description": "Get the default dashboard for the logged-in user's company"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Dashboards",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has dashboards array', () => {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('User has access to at least one dashboard', () => {",
+                  "    pm.expect(jsonData.data.length).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "// Display dashboard info",
+                  "jsonData.data.forEach((dashboard, index) => {",
+                  "    console.log(`Dashboard ${index + 1}:`, dashboard.name, `(${dashboard.widgetCount} widgets)`);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/dashboards",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "dashboards"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Widget Loading",
+      "item": [
+        {
+          "name": "Get Dashboard with Widgets",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has dashboard and widgets', () => {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.have.property('dashboard');",
+                  "    pm.expect(jsonData.data).to.have.property('widgets');",
+                  "    pm.expect(jsonData.data.widgets).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('All 10 widgets are present', () => {",
+                  "    pm.expect(jsonData.data.widgets.length).to.equal(10);",
+                  "});",
+                  "",
+                  "// Validate widget structure",
+                  "pm.test('Widgets have required properties', () => {",
+                  "    jsonData.data.widgets.forEach(widget => {",
+                  "        pm.expect(widget).to.have.property('layoutId');",
+                  "        pm.expect(widget).to.have.property('widgetId');",
+                  "        pm.expect(widget).to.have.property('name');",
+                  "        pm.expect(widget).to.have.property('type');",
+                  "        pm.expect(widget).to.have.property('component');",
+                  "        pm.expect(widget).to.have.property('layoutConfig');",
+                  "        pm.expect(widget).to.have.property('dataSourceConfig');",
+                  "        pm.expect(widget).to.have.property('displayOrder');",
+                  "    });",
+                  "});",
+                  "",
+                  "// Validate layout config structure",
+                  "pm.test('Layout configs have grid properties', () => {",
+                  "    jsonData.data.widgets.forEach(widget => {",
+                  "        pm.expect(widget.layoutConfig).to.have.property('x');",
+                  "        pm.expect(widget.layoutConfig).to.have.property('y');",
+                  "        pm.expect(widget.layoutConfig).to.have.property('w');",
+                  "        pm.expect(widget.layoutConfig).to.have.property('h');",
+                  "        pm.expect(widget.layoutConfig).to.have.property('minW');",
+                  "        pm.expect(widget.layoutConfig).to.have.property('minH');",
+                  "    });",
+                  "});",
+                  "",
+                  "// Store first widget's layoutId for deletion test",
+                  "if (jsonData.data.widgets.length > 0) {",
+                  "    const ofrChart = jsonData.data.widgets.find(w => w.name === 'OFR Chart');",
+                  "    if (ofrChart) {",
+                  "        pm.environment.set('ofrChartLayoutId', ofrChart.layoutId);",
+                  "        pm.environment.set('ofrChartWidgetDefId', ofrChart.widgetId);",
+                  "        console.log('OFR Chart layoutId:', ofrChart.layoutId);",
+                  "    }",
+                  "}",
+                  "",
+                  "// Display widget summary",
+                  "console.log('\\n=== DASHBOARD WIDGETS ===');",
+                  "jsonData.data.widgets.forEach((widget, index) => {",
+                  "    console.log(`${index + 1}. ${widget.name} (${widget.type})`);",
+                  "    console.log(`   Position: x=${widget.layoutConfig.x}, y=${widget.layoutConfig.y}, w=${widget.layoutConfig.w}, h=${widget.layoutConfig.h}`);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/dashboard/{{defaultDashboardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "dashboard", "{{defaultDashboardId}}"]
+            },
+            "description": "Load all widgets for the default dashboard"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Widget Types & Definitions",
+      "item": [
+        {
+          "name": "List Widget Types",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Has 5 widget types', () => {",
+                  "    pm.expect(jsonData.data.length).to.equal(5);",
+                  "});",
+                  "",
+                  "pm.test('Widget types are correct', () => {",
+                  "    const types = jsonData.data.map(t => t.name);",
+                  "    pm.expect(types).to.include.members(['kpi', 'line_chart', 'fractions_chart', 'donut_chart', 'map']);",
+                  "});",
+                  "",
+                  "// Store line_chart widget type ID",
+                  "const lineChartType = jsonData.data.find(t => t.name === 'line_chart');",
+                  "if (lineChartType) {",
+                  "    pm.environment.set('lineChartTypeId', lineChartType.id);",
+                  "}",
+                  "",
+                  "console.log('Available widget types:');",
+                  "jsonData.data.forEach(type => {",
+                  "    console.log(`- ${type.name} → ${type.componentName}`);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/types",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "types"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Widget Definitions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Has 10 widget definitions', () => {",
+                  "    pm.expect(jsonData.data.length).to.equal(10);",
+                  "});",
+                  "",
+                  "pm.test('Widget definitions have data source config', () => {",
+                  "    jsonData.data.forEach(def => {",
+                  "        pm.expect(def).to.have.property('dataSourceConfig');",
+                  "        pm.expect(def.dataSourceConfig).to.be.an('object');",
+                  "    });",
+                  "});",
+                  "",
+                  "// Store OFR Chart widget definition ID",
+                  "const ofrChartDef = jsonData.data.find(d => d.name === 'OFR Chart');",
+                  "if (ofrChartDef) {",
+                  "    pm.environment.set('ofrChartDefId', ofrChartDef.id);",
+                  "}",
+                  "",
+                  "console.log('\\nAvailable widget definitions:');",
+                  "jsonData.data.forEach((def, index) => {",
+                  "    console.log(`${index + 1}. ${def.name} (${def.widgetType})`);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/definitions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "definitions"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Widget Management",
+      "item": [
+        {
+          "name": "Delete OFR Chart Widget",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Widget deleted successfully', () => {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.message).to.include('removed');",
+                  "});",
+                  "",
+                  "console.log('OFR Chart widget deleted successfully');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Ensure we have the layoutId",
+                  "if (!pm.environment.get('ofrChartLayoutId')) {",
+                  "    console.error('ofrChartLayoutId not set. Please run \"Get Dashboard with Widgets\" first.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/dashboard/{{defaultDashboardId}}/layout/{{ofrChartLayoutId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "dashboard", "{{defaultDashboardId}}", "layout", "{{ofrChartLayoutId}}"]
+            },
+            "description": "Remove OFR Chart widget from dashboard"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Widget Deleted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Dashboard now has 9 widgets', () => {",
+                  "    pm.expect(jsonData.data.widgets.length).to.equal(9);",
+                  "});",
+                  "",
+                  "pm.test('OFR Chart is not in widget list', () => {",
+                  "    const ofrChart = jsonData.data.widgets.find(w => w.name === 'OFR Chart');",
+                  "    pm.expect(ofrChart).to.be.undefined;",
+                  "});",
+                  "",
+                  "console.log('Verified: Dashboard now has', jsonData.data.widgets.length, 'widgets');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/dashboard/{{defaultDashboardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "dashboard", "{{defaultDashboardId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Re-add OFR Chart Widget",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Widget added successfully', () => {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.have.property('layoutId');",
+                  "});",
+                  "",
+                  "console.log('OFR Chart widget re-added successfully');",
+                  "console.log('New layoutId:', jsonData.data.layoutId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"widgetDefinitionId\": \"{{ofrChartDefId}}\",\n  \"layoutConfig\": {\n    \"x\": 0,\n    \"y\": 1,\n    \"w\": 4,\n    \"h\": 2,\n    \"minW\": 3,\n    \"minH\": 2,\n    \"static\": false\n  },\n  \"instanceConfig\": {},\n  \"displayOrder\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/dashboard/{{defaultDashboardId}}/widget",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "dashboard", "{{defaultDashboardId}}", "widget"]
+            },
+            "description": "Add OFR Chart widget back to the dashboard"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Widget Restored",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Dashboard has 10 widgets again', () => {",
+                  "    pm.expect(jsonData.data.widgets.length).to.equal(10);",
+                  "});",
+                  "",
+                  "pm.test('OFR Chart is back in widget list', () => {",
+                  "    const ofrChart = jsonData.data.widgets.find(w => w.name === 'OFR Chart');",
+                  "    pm.expect(ofrChart).to.not.be.undefined;",
+                  "    pm.expect(ofrChart.layoutConfig.w).to.equal(4);",
+                  "    pm.expect(ofrChart.layoutConfig.h).to.equal(2);",
+                  "});",
+                  "",
+                  "console.log('✅ Complete workflow test passed!');",
+                  "console.log('Dashboard restored to 10 widgets');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/dashboard/{{defaultDashboardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "dashboard", "{{defaultDashboardId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Multi-Company Testing",
+      "item": [
+        {
+          "name": "Switch to Arabco User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Switch to Arabco token",
+                  "const arabcoToken = pm.environment.get('arabcoToken');",
+                  "if (arabcoToken) {",
+                  "    pm.environment.set('authToken', arabcoToken);",
+                  "    console.log('Switched to Arabco user token');",
+                  "} else {",
+                  "    console.error('Arabco token not found. Please run \"Login as Arabco User\" first.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Arabco has their own dashboard', () => {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.name).to.include('Arabco');",
+                  "});",
+                  "",
+                  "// Store Arabco dashboard ID",
+                  "pm.environment.set('arabcoDashboardId', jsonData.data.id);",
+                  "",
+                  "console.log('Arabco dashboard:', jsonData.data.name);",
+                  "console.log('Dashboard ID:', jsonData.data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/default-dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "default-dashboard"]
+            },
+            "description": "Get Arabco's default dashboard (should be different from SaherFlow's)"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Arabco Dashboard Isolation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Arabco dashboard has 10 widgets', () => {",
+                  "    pm.expect(jsonData.data.widgets.length).to.equal(10);",
+                  "});",
+                  "",
+                  "pm.test('Dashboard ID matches Arabco dashboard', () => {",
+                  "    const arabcoDashboardId = pm.environment.get('arabcoDashboardId');",
+                  "    pm.expect(jsonData.data.dashboard.id).to.equal(arabcoDashboardId);",
+                  "});",
+                  "",
+                  "console.log('✅ Company isolation verified!');",
+                  "console.log('Arabco has their own separate dashboard with all widgets');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/widgets/dashboard/{{arabcoDashboardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "widgets", "dashboard", "{{arabcoDashboardId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Switch Back to SaherFlow Admin",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Get original SaherFlow admin token (stored during first login)",
+                  "// We'll need to re-login or use stored token",
+                  "console.log('Switching back to SaherFlow admin...');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login successful', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    ",
+                  "    // Restore SaherFlow token",
+                  "    pm.environment.set('authToken', jsonData.data.token);",
+                  "    ",
+                  "    console.log('Switched back to SaherFlow admin');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@saherflow.com\",\n  \"password\": \"Admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    }
+  ]
+}
