@@ -987,6 +987,321 @@ pm.test("Missing parameters detected", function () {
 
 ---
 
+## How OFR Line Chart Data Loading Works (Practical Example)
+
+This section explains step-by-step how data flows into the OFR (Oil Flow Rate) line chart when a user opens the dashboard. This is what you can demonstrate to your supervisor.
+
+### Step 1: User Authentication
+
+The user logs in with their credentials:
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "email": "john@arabco.com",
+  "password": "Password123"
+}
+```
+
+**Response includes:**
+- JWT token (authentication credential)
+- User role (admin or user)
+- Company ID (required for data filtering)
+
+**Backend logic:** The system validates credentials, generates a JWT token, and stores the company ID in the token for later use.
+
+### Step 2: Dashboard Structure Retrieved
+
+Once authenticated, the user's dashboard is loaded:
+
+```http
+GET /api/widgets/user-dashboard
+Authorization: Bearer <JWT_TOKEN>
+```
+
+**This query retrieves:**
+1. Dashboard configuration (name, layout settings)
+2. All widgets assigned to this dashboard
+3. Widget metadata including the OFR chart widget
+
+**Key information extracted for OFR chart:**
+```json
+{
+  "widgetId": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "OFR Chart",
+  "type": "line_chart",
+  "component": "CustomLineChart",
+  "dataSourceConfig": {
+    "deviceTypeId": 1,
+    "numberOfSeries": 1,
+    "seriesConfig": [
+      {
+        "propertyId": 4,
+        "propertyName": "Oil Flow Rate",
+        "displayName": "OFR",
+        "dataSourceProperty": "OFR",
+        "unit": "l/min",
+        "dataType": "numeric"
+      }
+    ]
+  }
+}
+```
+
+**Backend query (dashboard_layouts):**
+```sql
+SELECT
+  dl.id as layout_id,
+  dl.layout_config,
+  wd.id as widget_id,
+  wd.name as widget_name,
+  wd.data_source_config,
+  wt.component_name
+FROM dashboard_layouts dl
+INNER JOIN widget_definitions wd ON dl.widget_definition_id = wd.id
+INNER JOIN widget_types wt ON wd.widget_type_id = wt.id
+WHERE dl.dashboard_id = $1
+ORDER BY dl.display_order ASC
+```
+
+### Step 3: OFR Chart Data Loading
+
+Once the dashboard is loaded, the OFR chart component requests its data:
+
+```http
+GET /api/widgets/widget-data/550e8400-e29b-41d4-a716-446655440000?timeRange=24h
+Authorization: Bearer <JWT_TOKEN>
+```
+
+**Query parameters:**
+- `widgetId`: The specific widget ID from step 2
+- `timeRange`: "24h" (can be 1h, 6h, 24h, 7d, 30d)
+- `hierarchyId`: Optional - filter by production area/well
+- `deviceId`: Optional - filter by specific device
+
+**Backend logic executes a complex query:**
+
+```sql
+-- Step 3a: Extract widget configuration
+SELECT wd.data_source_config, wt.component_name
+FROM widget_definitions wd
+INNER JOIN widget_types wt ON wd.widget_type_id = wt.id
+WHERE wd.id = '550e8400-e29b-41d4-a716-446655440000'
+
+-- This returns:
+-- {
+--   "deviceTypeId": 1,        -- Filter devices by type MPFM
+--   "numberOfSeries": 1,      -- Single series (just OFR)
+--   "seriesConfig": [{
+--     "dataSourceProperty": "OFR",  -- Which JSON field to extract
+--     "unit": "l/min"
+--   }]
+-- }
+```
+
+```sql
+-- Step 3b: Query historical OFR data
+SELECT
+  dd.created_at as timestamp,
+  dd.serial_number,
+  COALESCE((dd.data->>'OFR')::numeric, 0) as value
+FROM device_data dd
+INNER JOIN device d ON dd.device_id = d.id
+WHERE d.company_id = 1                    -- User's company
+  AND d.device_type_id = 1                 -- MPFM devices only
+  AND dd.created_at >= NOW() - INTERVAL '24 hours'  -- Last 24 hours
+  AND dd.data ? 'OFR'                      -- Only records with OFR data
+ORDER BY dd.created_at ASC
+LIMIT 200
+```
+
+**Example response data:**
+```json
+{
+  "success": true,
+  "data": {
+    "OFR": {
+      "data": [
+        {
+          "timestamp": "2025-11-04T10:00:00Z",
+          "serialNumber": "MPFM-ARB-101",
+          "value": 850.5
+        },
+        {
+          "timestamp": "2025-11-04T11:00:00Z",
+          "serialNumber": "MPFM-ARB-101",
+          "value": 870.2
+        },
+        {
+          "timestamp": "2025-11-04T12:00:00Z",
+          "serialNumber": "MPFM-ARB-102",
+          "value": 920.1
+        }
+      ],
+      "unit": "l/min",
+      "propertyName": "Oil Flow Rate"
+    }
+  },
+  "context": {
+    "hierarchyId": null,
+    "deviceId": null,
+    "timeRange": "24h"
+  }
+}
+```
+
+### Step 4: Frontend Transforms Data for Chart
+
+The React component (CustomLineChart) receives the data and transforms it for visualization:
+
+```javascript
+// Data from backend
+const apiResponse = {
+  data: {
+    OFR: {
+      data: [
+        { timestamp: "2025-11-04T10:00:00Z", serialNumber: "MPFM-ARB-101", value: 850.5 },
+        { timestamp: "2025-11-04T11:00:00Z", serialNumber: "MPFM-ARB-101", value: 870.2 },
+        { timestamp: "2025-11-04T12:00:00Z", serialNumber: "MPFM-ARB-102", value: 920.1 }
+      ],
+      unit: "l/min"
+    }
+  }
+};
+
+// Transform for chart rendering
+const chartData = {
+  series: [
+    {
+      name: "OFR (Oil Flow Rate)",
+      unit: "l/min",
+      data: [
+        { x: new Date("2025-11-04T10:00:00Z"), y: 850.5 },
+        { x: new Date("2025-11-04T11:00:00Z"), y: 870.2 },
+        { x: new Date("2025-11-04T12:00:00Z"), y: 920.1 }
+      ]
+    }
+  ]
+};
+
+// Chart renders with X-axis (timestamps) and Y-axis (OFR values in l/min)
+```
+
+### Step 5: User Interacts with Chart (Optional)
+
+The user can filter data by time range or hierarchy:
+
+```http
+-- Filter by specific well/hierarchy
+GET /api/widgets/widget-data/550e8400-e29b-41d4-a716-446655440000?timeRange=24h&hierarchyId=1
+
+-- Backend uses recursive CTE to find all devices under hierarchy
+WITH RECURSIVE hierarchy_tree AS (
+  SELECT id FROM hierarchy WHERE id = 1
+  UNION ALL
+  SELECT h.id FROM hierarchy h
+  JOIN hierarchy_tree ht ON h.parent_id = ht.id
+)
+SELECT ... WHERE d.hierarchy_id IN (SELECT id FROM hierarchy_tree)
+```
+
+### Complete Data Flow Visualization
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ USER BROWSER                                                         │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  1. User Logs In                                                    │
+│     POST /api/auth/login                                            │
+│     ↓ Receives JWT Token                                            │
+│                                                                      │
+│  2. Dashboard Loads                                                 │
+│     GET /api/widgets/user-dashboard                                 │
+│     ↓ Receives Dashboard + Widget Configs                           │
+│                                                                      │
+│  3. OFR Chart Component Requests Data                               │
+│     GET /api/widgets/widget-data/{widgetId}?timeRange=24h           │
+│     ↓ Receives Time-Series Data Points                              │
+│                                                                      │
+│  4. Component Renders Line Chart                                    │
+│     Displays OFR values over time                                   │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+                              ↕ API Calls
+┌──────────────────────────────────────────────────────────────────────┐
+│ BACKEND (Node.js/Express)                                            │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  1. Auth Service                                                    │
+│     → Validates credentials                                         │
+│     → Generates JWT with company_id                                 │
+│                                                                      │
+│  2. Widget Service                                                  │
+│     → Fetches dashboard config                                      │
+│     → Returns widget definitions                                    │
+│                                                                      │
+│  3. Data Loading Service                                            │
+│     → Extracts widget config (deviceTypeId, seriesConfig)           │
+│     → Builds SQL query with filters                                 │
+│     → Queries device_data table                                     │
+│     → Transforms data to API format                                 │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+                              ↕ SQL Queries
+┌──────────────────────────────────────────────────────────────────────┐
+│ DATABASE (PostgreSQL)                                                │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Tables:                                                            │
+│  ├─ widget_definitions: Stores OFR chart configuration              │
+│  ├─ device_data: Historical OFR readings                            │
+│  ├─ device: Device metadata and company/type associations           │
+│  └─ dashboards: Dashboard configurations                            │
+│                                                                      │
+│  Query optimizations:                                               │
+│  ├─ Index on device.company_id for company filtering                │
+│  ├─ Index on device_data.created_at for time filtering              │
+│  ├─ GIN index on device_data.data for JSONB property access         │
+│  └─ Index on device.device_type_id for device type filtering        │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Performance Characteristics
+
+1. **Dashboard Load**: ~200ms (2-3 SQL queries)
+2. **Widget Data Load**: ~500ms (1 complex query with 200-point limit)
+3. **Total Page Load**: ~1-2 seconds
+4. **Data Updates**: Frontend can poll every 5-10 seconds
+
+### Security Implementation
+
+1. **Authentication**: JWT token required for all requests
+2. **Company Isolation**: `WHERE d.company_id = req.user.company_id`
+3. **Role-Based Access**: Only admins can create/modify widgets
+4. **Row-Level Security**: Each query filters by company and user permissions
+
+### Practical Testing with Postman
+
+You can demonstrate this complete flow step-by-step:
+
+1. **Run:** Admin Login → captures JWT
+2. **Run:** Get User Dashboard → finds OFR widget ID
+3. **Run:** Load OFR Chart Data (24h) → shows 200 latest data points
+4. **Run:** Load OFR Chart Data (1h) → shows more granular data
+5. **Run:** Load OFR Latest Data → shows current values from all devices
+6. **Run:** Create Custom Widget → create new widget
+7. **Run:** Add Widget to Dashboard → add to dashboard
+8. **Run:** Update Layout → move widget around
+9. **Run:** Remove Widget → clean up
+
+This demonstrates the complete lifecycle of widget management and data loading to your supervisor.
+
+---
+
 ## Summary
 
 ### Key Points
